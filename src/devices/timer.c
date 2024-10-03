@@ -7,7 +7,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+#include <stdbool.h>  
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -29,7 +29,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
-
+static struct list sleep_list;
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -37,6 +37,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init(&sleep_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -92,10 +93,23 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
-}
+  
+  enum intr_level inturrupt_level = intr_disable();
+  struct thread *t = thread_current();
 
+  t->wake_ticks = ticks + start;
+
+  list_insert_ordered(&sleep_list, &t->elem, check_ticks_less, NULL);
+  thread_block();
+  intr_set_level (inturrupt_level);
+}
+/* Check two threads' wake ticks and return the strict inequality. */
+bool check_ticks_less(const struct list_elem *i, const struct list_elem *j, void *aus UNUSED)
+{
+  const struct thread *it = list_entry(i, struct thread, elem);
+  const struct thread *jt = list_entry(j, struct thread, elem);
+  return (it->wake_ticks < jt->wake_ticks);
+}
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
    turned on. */
 void
@@ -171,7 +185,22 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  thread_tick ();
+  thread_tick();
+  check_thread_wakeup();
+}
+void check_thread_wakeup(void)
+{
+  struct thread *first;
+  while(!list_empty(&sleep_list))
+  {
+    first = list_entry(list_front(&sleep_list), struct thread, elem);
+    if(first->wake_ticks <= ticks)
+    {
+      list_pop_front(&sleep_list);
+      thread_unblock(first);
+    }
+    else break;
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
