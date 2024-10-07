@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed_point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -70,6 +71,10 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+const struct thread* IDLE_THREAD(){
+  return idle_thread;
+}
+int load_avg;
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -109,7 +114,7 @@ thread_start (void)
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
-
+  load_avg = 0;
   /* Start preemptive thread scheduling. */
   intr_enable ();
 
@@ -200,8 +205,53 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  thread_change_running();
   return tid;
+}
+
+void thread_change_running (void)
+{
+  if(list_empty(&ready_list)) return;
+  if(list_entry(list_front(&ready_list), struct thread, elem)->priority > thread_current()->priority) thread_yield();
+  
+}
+
+void mlfqs_priority_calculator (struct thread *t)
+{
+  if (t == idle_thread) return;
+
+  t->priority = fp_to_int(add_fp_int(div_fp_int(t->recent_cpu, -4), 63 - t->nice * 2));
+}
+void mlfqs_recent_cpu_calculator (struct thread *t)
+{
+  if (t == idle_thread) return;
+
+  t->recent_cpu = add_fp_int(mult_fp(div_fp(mult_fp_int(load_avg, 2), add_fp_int(mult_fp_int(load_avg, 2), 1)), t->recent_cpu), t->nice);
+}
+void mlfqs_load_avg_calculator (void)
+{
+  int _size = list_size(&ready_list);
+  int ready_threads = (thread_current() == idle_thread) ? _size : _size + 1;
+
+  load_avg = add_fp(mult_fp(div_fp(int_to_fp(59), int_to_fp(60)), load_avg), mult_fp_int(div_fp(int_to_fp(1), int_to_fp(60)), ready_threads));
+}
+void mlfqs_recent_cpu_plusplus (void)
+{
+  if(thread_current() != idle_thread) thread_current()->recent_cpu = add_fp_int(thread_current()->recent_cpu, 1);
+}
+void mlfqs_recent_cpu_updator (void)
+{
+  for (struct list_elem* i = list_begin(&all_list); i != list_end(&all_list); i = list_next(i))
+  {
+    mlfqs_recent_cpu_calculator(list_entry(i, struct thread, allelem));
+  } 
+}
+void mlfqs_priority_updator(void)
+{
+  for (struct list_elem* i = list_begin(&all_list); i != list_end(&all_list); i = list_next(i))
+  {
+    mlfqs_priority_calculator(list_entry(i, struct thread, allelem));
+  }
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -218,6 +268,12 @@ thread_block (void)
 
   thread_current ()->status = THREAD_BLOCKED;
   schedule ();
+}
+bool thread_priority_check (const struct list_elem *i, const struct list_elem *j, void *aux UNUSED)
+{
+  struct thread *it = list_entry(i, struct thread, elem);
+  struct thread *jt = list_entry(j, struct thread, elem);
+  return it->priority > jt->priority; 
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
@@ -237,7 +293,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  //list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, thread_priority_check, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -286,7 +343,7 @@ thread_exit (void)
   process_exit ();
 #endif
 
-  /* Remove thread from all threads list, set our status to dying,
+/* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
@@ -308,7 +365,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    //list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, thread_priority_check, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -335,7 +393,10 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  if(thread_mlfqs) return;
+  thread_current ()-> init_priority = new_priority;
+  update_priority();
+  thread_change_running();
 }
 
 /* Returns the current thread's priority. */
@@ -349,31 +410,42 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  enum intr_level inturrupt_level = intr_disable();
+  struct thread *t = thread_current();
+  t->nice = nice;
+  mlfqs_priority_calculator(t);
+  thread_change_running();
+  intr_set_level(inturrupt_level);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level inturrupt_level = intr_disable();
+  int nice = thread_current()->nice;
+  intr_set_level(inturrupt_level);
+  return nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level inturrupt_level = intr_disable();
+  int _load_avg = fp_to_int_round(mult_fp_int(load_avg, 100));
+  intr_set_level(inturrupt_level);
+  return _load_avg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level inturrupt_level = intr_disable();
+  int recent_cpu = fp_to_int_round(mult_fp_int(thread_current()->recent_cpu, 100));
+  intr_set_level(inturrupt_level);
+  return recent_cpu;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -463,7 +535,11 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
+  t->init_priority = priority;
+  t->waiting_lock = NULL;
+  t->nice = 0;
+  t->recent_cpu = 0;
+  list_init(&t->donations);
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

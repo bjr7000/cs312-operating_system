@@ -97,6 +97,7 @@ timer_sleep (int64_t ticks)
   enum intr_level inturrupt_level = intr_disable();
   struct thread *t = thread_current();
 
+  ASSERT (t != IDLE_THREAD());
   t->wake_ticks = ticks + start;
 
   list_insert_ordered(&sleep_list, &t->elem, check_ticks_less, NULL);
@@ -186,6 +187,20 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick();
+  if(thread_mlfqs)
+  {
+    mlfqs_recent_cpu_plusplus();
+    if(ticks % 4 == 0) 
+    {
+      mlfqs_priority_updator();
+    }
+    if(ticks & TIMER_FREQ == 0)
+    {
+      mlfqs_load_avg_calculator();
+      mlfqs_recent_cpu_updator();
+    }
+  }
+
   check_thread_wakeup();
 }
 void check_thread_wakeup(void)
