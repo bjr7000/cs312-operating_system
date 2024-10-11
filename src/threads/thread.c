@@ -230,10 +230,7 @@ void mlfqs_recent_cpu_calculator (struct thread *t)
 }
 void mlfqs_load_avg_calculator (void)
 {
-  int _size = list_size(&ready_list);
-  int ready_threads = (thread_current() == idle_thread) ? _size : _size + 1;
-
-  load_avg = add_fp(mult_fp(div_fp(int_to_fp(59), int_to_fp(60)), load_avg), mult_fp_int(div_fp(int_to_fp(1), int_to_fp(60)), ready_threads));
+  load_avg = add_fp(mult_fp(div_fp(int_to_fp(59), int_to_fp(60)), load_avg), mult_fp_int(div_fp(int_to_fp(1), int_to_fp(60)), list_size(&ready_list) + (thread_current() == idle_thread)));
 }
 void mlfqs_recent_cpu_plusplus (void)
 {

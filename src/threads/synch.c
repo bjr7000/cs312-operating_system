@@ -289,6 +289,7 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  lock->holder = NULL;
   if(thread_mlfqs)
   {
    sema_up (&lock->semaphore);
@@ -296,7 +297,6 @@ lock_release (struct lock *lock)
   }
   remove_donations(lock);
   update_priority();
-  lock->holder = NULL;
 
   sema_up (&lock->semaphore);
 }
