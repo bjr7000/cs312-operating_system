@@ -364,9 +364,7 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    //list_push_back (&ready_list, &cur->elem);
-    list_insert_ordered(&ready_list, &cur->elem, thread_priority_check, NULL);
+  if (cur != idle_thread) list_insert_ordered(&ready_list, &cur->elem, thread_priority_check, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -408,7 +406,7 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
   enum intr_level inturrupt_level = intr_disable();
   struct thread *t = thread_current();
