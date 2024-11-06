@@ -212,7 +212,7 @@ thread_create (const char *name, int priority,
 void thread_change_running (void)
 {
   if(list_empty(&ready_list)) return;
-  if(list_entry(list_front(&ready_list), struct thread, elem)->priority > thread_current()->priority) thread_yield();
+  if(!intr_context() && list_entry(list_front(&ready_list), struct thread, elem)->priority > thread_current()->priority) thread_yield();
   
 }
 
