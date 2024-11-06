@@ -100,7 +100,7 @@ args_push (int argc, char **argv, void **esp)
 static void
 start_process (void *file_name_)
 {
-  printf("hi");  char *file_name = file_name_, **argv;
+  char *file_name = file_name_, **argv;
   struct intr_frame if_;
   bool success;
 
