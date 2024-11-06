@@ -28,7 +28,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy, *program_name, *save_ptr = NULL;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -39,10 +39,60 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  program_name = strtok_r(file_name, " ", &save_ptr);
+  
+  tid = thread_create (program_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
+}
+
+int
+args_parse(char *command_line, char **argv)
+{
+  int argc = 0;
+  char *token, *save_ptr;
+
+  for (token = strtok_r (command_line, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr), argc++)
+  {
+    argv[argc] = token;
+  }
+
+  return argc;
+}
+
+void
+args_push (int argc, char **argv, void **esp) 
+{
+    int i, arg_len, line;
+
+    char *arg_addresses[argc];
+
+    for (i = argc - 1; i >= 0; i--) {
+        arg_len = strlen(argv[i]);
+        *esp -= (arg_len + 1);
+        strlcpy(*esp, argv[i], arg_len + 1);
+        arg_addresses[i] = *esp;
+    }
+
+    *esp = (void *)((uintptr_t)(*esp) - (uintptr_t)(*esp) % sizeof(char*));
+
+    *esp -= sizeof(char*);
+    *(char **)*esp = 0;  
+
+    for (i = argc - 1; i >= 0; i--) {
+        *esp -= sizeof(char*);;
+        *(char **)*esp = arg_addresses[i];
+    }
+
+    *esp -= sizeof(char**);
+    *(char ***)*esp = *esp + sizeof(char**);
+
+    *esp -= sizeof(int);
+    *(int *)*esp = argc;
+
+    *esp -= sizeof(void *);
+    *(void **)*esp = 0;
 }
 
 /* A thread function that loads a user process and starts it
@@ -50,7 +100,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  printf("hi");  char *file_name = file_name_, **argv;
   struct intr_frame if_;
   bool success;
 
@@ -59,9 +109,15 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  argv = palloc_get_page(0);
+  int argc = args_parse(file_name, argv);
+
+  success = load (argv[0], &if_.eip, &if_.esp);
+  if (success) args_push(argc, argv, &if_.esp);
 
   /* If load failed, quit. */
+  palloc_free_page (argv);
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
@@ -86,7 +142,7 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   return -1;
 }
@@ -97,7 +153,6 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
