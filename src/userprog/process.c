@@ -28,6 +28,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
+  //printf("process_execute\n");
   char *fn_copy, *program_name, *save_ptr = NULL;
   tid_t tid;
 
@@ -44,7 +45,9 @@ process_execute (const char *file_name)
   tid = thread_create (program_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  //printf("process_execute-end\n");
   return tid;
+
 }
 
 int
@@ -71,28 +74,35 @@ args_push (int argc, char **argv, void **esp)
     for (i = argc - 1; i >= 0; i--) {
         arg_len = strlen(argv[i]);
         *esp -= (arg_len + 1);
-        strlcpy(*esp, argv[i], arg_len + 1);
+        //printf("Pushing argument '%s' to stack at %p\n", argv[i], *esp);
+        memcpy(*esp, argv[i], arg_len + 1);
         arg_addresses[i] = *esp;
     }
 
     *esp = (void *)((uintptr_t)(*esp) - (uintptr_t)(*esp) % sizeof(char*));
+    //printf("Stack pointer after alignment: %p\n", *esp);
 
     *esp -= sizeof(char*);
     *(char **)*esp = 0;  
+    //printf("Stack pointer after alignment: %p\n", *esp);
 
     for (i = argc - 1; i >= 0; i--) {
         *esp -= sizeof(char*);;
         *(char **)*esp = arg_addresses[i];
     }
+    //printf("Stack pointer after alignment: %p\n", *esp);
 
     *esp -= sizeof(char**);
     *(char ***)*esp = *esp + sizeof(char**);
+    //printf("Stack pointer after alignment: %p\n", *esp);
 
     *esp -= sizeof(int);
     *(int *)*esp = argc;
+    //printf("Stack pointer after alignment: %p\n", *esp);
 
     *esp -= sizeof(void *);
     *(void **)*esp = 0;
+    //printf("Stack pointer after alignment: %p\n", *esp);
 }
 
 /* A thread function that loads a user process and starts it
@@ -100,6 +110,7 @@ args_push (int argc, char **argv, void **esp)
 static void
 start_process (void *file_name_)
 {
+  //printf("process_start\n");
   char *file_name = file_name_, **argv;
   struct intr_frame if_;
   bool success;
@@ -109,19 +120,20 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-
+  
   argv = palloc_get_page(0);
   int argc = args_parse(file_name, argv);
-
   success = load (argv[0], &if_.eip, &if_.esp);
   if (success) args_push(argc, argv, &if_.esp);
-
+  //hex_dump((int*)if_.esp, (int*)if_.esp, 0x8048000 - *(int*)if_.esp, true);
   /* If load failed, quit. */
+
   palloc_free_page (argv);
   palloc_free_page (file_name);
   if (!success) 
-    thread_exit ();
-
+    syscall_exit(-1);
+  //printf("process_start-end\n");
+  //hex_dump((int*)if_.esp, (int*)if_.esp, 0x8048000 - *(int*)if_.esp, true);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -144,18 +156,41 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-  return -1;
+  //printf("process_wait\n");
+  struct thread* cur = thread_current();
+  //hex_dump((int*)cur->esp, (int*)cur->esp, 0x8048000 - *(int*)cur->esp, true);
+  struct thread *child = child_process_given_pid (child_tid);
+  //hex_dump((int*)cur->esp, (int*)cur->esp, 0x8048000 - *(int*)cur->esp, true);
+  if (child == NULL) return -1;
+
+  sema_down(&child->wait_sema);
+  //printf("sema_up\n");
+  int exit_status = child->exit_status;
+  //printf("child %d\n", &child->child_elem);
+  //printf("%d\n", list_empty(&child->child_list));
+  list_remove(&child->child_elem);
+  sema_up(&child->exit_sema);
+  //printf("child\n");
+  //palloc_free_page(child);
+  //printf("process_wait-end\n");
+  return exit_status;
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
+  //printf("process_exit\n");
   struct thread *cur = thread_current ();
   uint32_t *pd;
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
+  for (int i = cur->fd - 1; i > 1; i--)
+  {
+    syscall_close (i);
+  }
+  palloc_free_page(cur->fd_list);
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set
@@ -169,6 +204,9 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  sema_up (&cur->wait_sema);
+  sema_down (&cur->exit_sema);
 }
 
 /* Sets up the CPU for running user code in the current

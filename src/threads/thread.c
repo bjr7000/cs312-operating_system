@@ -201,8 +201,19 @@ thread_create (const char *name, int priority,
   /* Stack frame for switch_threads(). */
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
-  sf->ebp = 0;
+  sf->ebp = 0;  
 
+  t->fd_list = palloc_get_page(PAL_ZERO);
+  if(t->fd_list == NULL)
+  {
+    return TID_ERROR;
+  }
+
+  t->exit_status = -1;
+
+  sema_init (&(t->wait_sema), 0);
+  sema_init (&(t->exit_sema), 0);
+  list_push_back (&thread_current()->child_list, &t->child_elem);
   /* Add to run queue. */
   thread_unblock (t);
   thread_change_running();
@@ -538,6 +549,7 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+  list_init(&t->child_list);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -653,3 +665,18 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+struct thread* child_process_given_pid (tid_t pid)
+{
+  struct thread *t = thread_current();
+  struct thread *child;
+  t = thread_current ();  
+  for (struct list_elem *elem = list_begin (&(t->child_list)); elem != list_end (&(t->child_list)); elem = list_next (elem))
+    {
+      child = list_entry (elem, struct thread, child_elem);
+      if (child->tid == pid)
+        return child;
+    }
+
+  return NULL;
+}
