@@ -3,12 +3,21 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "filesys/off_t.h"
+
 #define PHYS_BASE 0xc0000000
 #define STACK_BOTTOM 0x8048000
 #define INVAILD -1
 #define VAILD 1
 static void syscall_handler (struct intr_frame *);
 struct lock file_lock;
+
+struct file
+  {
+    struct inode *inode;        /* File's inode. */
+    off_t pos;                  /* Current position. */
+    bool deny_write;            /* Has file_deny_write() been called? */
+  };
 
 void
 syscall_init (void) 
@@ -151,7 +160,7 @@ syscall_halt (void)
 void
 syscall_exit (int status)
 {
-  //printf("syscall_exit\n");
+  //printf("syscall_exit, %d, tid %d\n", status, thread_current()->tid);
   struct thread *t = thread_current ();
   t->exit_status = status;
   printf("%s: exit(%d)\n", t->name, status);
@@ -166,7 +175,7 @@ syscall_exec (const char* command)
   int pid = process_execute (command);
   if (pid == -1) 
   {
-    //printf("syscall_exec-end\n");
+    //printf("syscall_exec-end -1\n");
     return -1;
   }
   //printf("syscall_exec-end\n");
@@ -176,35 +185,77 @@ syscall_exec (const char* command)
 int
 syscall_wait (int pid)
 {
-  //printf("syscall_wait\n");
+  //printf("syscall_wait, %d\n", pid);
   return process_wait (pid);
 }
 
 int
 syscall_create (const char *file, unsigned initial_size)
 {
-  return 0;
+  if (file == NULL) syscall_exit(INVAILD);
+
+  return filesys_create(file, initial_size);
 }
 
 int syscall_remove (const char *file)
 {
-  return 0;
+  if (file == NULL) syscall_exit(INVAILD);
+
+  return filesys_remove(file);
 }
 
 int syscall_open (const char *file)
 {
-  return 0;
+
+  if (file == NULL) syscall_exit(INVAILD);
+
+  struct file* _file = filesys_open(file);
+  if(_file == NULL) return -1;
+  else
+  {
+    int fd;
+    for(fd = 3; thread_current()->fd_list[fd] != NULL; fd++) {}
+    if (!strcmp(thread_current()->name, file)) file_deny_write(_file);
+
+    thread_current()->fd_list[fd] = _file;
+    return fd;
+  }
+
+  return -1;
 }
+
 int syscall_filesize (int fd)
 {
-  return 0;
+  if (thread_current()->fd_list[fd] == NULL) syscall_exit(INVAILD);
+
+  return file_length(thread_current()->fd_list[fd]);
 }
+
 int syscall_read (int fd, void *buffer, unsigned size)
 {
-  return 0;
+  //printf("read");
+  if (check_address_vaild(buffer) == INVAILD) syscall_exit(INVAILD);
+
+  int bytes_read = -1;
+  if (fd == 0)
+  {
+    bytes_read = 0;
+    while(bytes_read < size && ((char *)buffer)[bytes_read] != '\0') bytes_read++;
+  }
+  else if (fd > 2) 
+  {
+    struct file *file = thread_current ()->fd_list[fd];
+    if (file == NULL) syscall_exit (INVAILD);
+
+    bytes_read = file_read (file, buffer, size);
+  }
+  return bytes_read;
 }
+
 int syscall_write (int fd, const void *buffer, unsigned size)
 {
+  if (check_address_vaild(buffer) == INVAILD) syscall_exit(INVAILD);
+
   int bytes_written = -1;
   if (fd == 1)
   {
@@ -212,27 +263,34 @@ int syscall_write (int fd, const void *buffer, unsigned size)
     putbuf(buffer, size);
     bytes_written = size;
     lock_release (&file_lock);
-  } else if (fd > 2){
+  } else if (fd > 2)
+  {
     struct file *file = thread_current ()->fd_list[fd];
-    if (file == NULL) {
-      syscall_exit (INVAILD);
-    }
+    if (file == NULL) syscall_exit (INVAILD);
+    if (file->deny_write) file_deny_write(file);
 
-    lock_acquire (&file_lock);
+    lock_acquire (&file_lock); 
     bytes_written = file_write (file, buffer, size);
     lock_release (&file_lock);
   }
 
   return bytes_written;
 }
+
 void syscall_seek (int fd, unsigned position)
 {
+  if (thread_current()->fd_list[fd] == NULL) syscall_exit(INVAILD);
 
+  file_seek(thread_current()->fd_list[fd], position);
 }
+
 unsigned syscall_tell (int fd)
 {
-  return 0;
+  if (thread_current()->fd_list[fd] == NULL) syscall_exit(INVAILD);
+
+  return file_tell(thread_current()->fd_list[fd]);
 }
+
 void syscall_close (int fd)
 {
   struct file *file = thread_current()->fd_list[fd];

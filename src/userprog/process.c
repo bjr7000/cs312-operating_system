@@ -28,10 +28,10 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  //printf("process_execute\n");
+  //printf("process_execute, tid %d\n", thread_current()->tid);
   char *fn_copy, *program_name, *save_ptr = NULL;
   tid_t tid;
-
+  //printf("tid %d\n", thread_current()->tid);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -39,15 +39,40 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  program_name = palloc_get_page (0);
+  if (program_name == NULL) {
+    return TID_ERROR;
+  }
+  strlcpy (program_name, file_name, PGSIZE);
+
+  //printf("tid %d\n", thread_current()->tid);
+
   /* Create a new thread to execute FILE_NAME. */
-  program_name = strtok_r(file_name, " ", &save_ptr);
-  
+  //printf("file_name, %s\n", file_name);
+  program_name = strtok_r(program_name, " ", &save_ptr);
+  //printf("program_name, %s\n", program_name);
+  //printf("tid %d\n", thread_current()->tid);
+  //printf("process_name %s, tid %d\n", program_name, thread_current()->tid);
+  //printf("%d\n", filesys_open(program_name) == NULL);
+
+  if (filesys_open(program_name) == NULL) return -1;
+  //printf("1");
   tid = thread_create (program_name, PRI_DEFAULT, start_process, fn_copy);
+  //printf("2");
+  //printf("process_execute, %d\n", tid);
+  //printf("%d\n", child_process_given_pid (tid)->load_sema);
+  //printf("3");
+  
+  sema_down(&child_process_given_pid (tid)->load_sema);
+  //printf("4");
+  //printf("process_execute_after sema, %d\n", tid);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  //printf("5");
   //printf("process_execute-end\n");
+  //printf("6");
+  palloc_free_page (program_name);
   return tid;
-
 }
 
 int
@@ -110,7 +135,7 @@ args_push (int argc, char **argv, void **esp)
 static void
 start_process (void *file_name_)
 {
-  //printf("process_start\n");
+  //printf("process_start, tid %d\n", thread_current()->tid);
   char *file_name = file_name_, **argv;
   struct intr_frame if_;
   bool success;
@@ -127,11 +152,17 @@ start_process (void *file_name_)
   if (success) args_push(argc, argv, &if_.esp);
   //hex_dump((int*)if_.esp, (int*)if_.esp, 0x8048000 - *(int*)if_.esp, true);
   /* If load failed, quit. */
-
+  //printf("process_load, tid %d\n", thread_current()->tid);
   palloc_free_page (argv);
   palloc_free_page (file_name);
+
+  sema_up(&thread_current()->load_sema);
+  //printf("process_load_sema %d, tid %d\n", thread_current()->load_sema, thread_current()->tid);
   if (!success) 
+  {
     syscall_exit(-1);
+  }
+  //printf("process_load end, tid %d\n", thread_current()->tid); 
   //printf("process_start-end\n");
   //hex_dump((int*)if_.esp, (int*)if_.esp, 0x8048000 - *(int*)if_.esp, true);
   /* Start the user process by simulating a return from an
@@ -186,10 +217,10 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  for (int i = cur->fd - 1; i > 1; i--)
+  /*for (int i = cur->fd_list - 1; i > 1; i--)
   {
     syscall_close (i);
-  }
+  }*/
   palloc_free_page(cur->fd_list);
   if (pd != NULL) 
     {
