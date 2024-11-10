@@ -208,9 +208,12 @@ int syscall_open (const char *file)
 {
 
   if (file == NULL) syscall_exit(INVAILD);
-
+  lock_acquire (&file_lock);
   struct file* _file = filesys_open(file);
-  if(_file == NULL) return -1;
+  if(_file == NULL){
+    lock_release (&file_lock);
+    return -1;
+  }
   else
   {
     int fd;
@@ -218,9 +221,10 @@ int syscall_open (const char *file)
     if (!strcmp(thread_current()->name, file)) file_deny_write(_file);
 
     thread_current()->fd_list[fd] = _file;
+    lock_release (&file_lock);
     return fd;
   }
-
+  lock_release (&file_lock);
   return -1;
 }
 
@@ -239,15 +243,19 @@ int syscall_read (int fd, void *buffer, unsigned size)
   int bytes_read = -1;
   if (fd == 0)
   {
+    lock_acquire (&file_lock);
     bytes_read = 0;
     while(bytes_read < size && ((char *)buffer)[bytes_read] != '\0') bytes_read++;
+    lock_release (&file_lock);
   }
   else if (fd > 2) 
   {
+    lock_acquire (&file_lock);
     struct file *file = thread_current ()->fd_list[fd];
     if (file == NULL) syscall_exit (INVAILD);
 
     bytes_read = file_read (file, buffer, size);
+    lock_release (&file_lock);
   }
   return bytes_read;
 }
