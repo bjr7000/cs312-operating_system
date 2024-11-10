@@ -210,6 +210,7 @@ thread_create (const char *name, int priority,
   }
 
   t->exit_status = -1;
+  t->not_successful_loading = 0;
 
   sema_init (&(t->wait_sema), 0);
   sema_init (&(t->exit_sema), 0);

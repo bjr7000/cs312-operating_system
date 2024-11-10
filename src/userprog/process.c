@@ -30,6 +30,7 @@ process_execute (const char *file_name)
 {
   //printf("process_execute, tid %d\n", thread_current()->tid);
   char *fn_copy, *program_name, *save_ptr = NULL;
+
   tid_t tid;
   //printf("tid %d\n", thread_current()->tid);
   /* Make a copy of FILE_NAME.
@@ -68,8 +69,17 @@ process_execute (const char *file_name)
   //printf("process_execute_after sema, %d\n", tid);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+
+  //Wait child process that failed load and remove them from parent's child list
+  struct list_elem* child = list_begin(&thread_current()->child_list);
+  while (child != list_end(&thread_current()->child_list)) {
+    if (list_entry(child, struct thread, child_elem)->not_successful_loading) {
+      return process_wait(tid);
+    }
+    child = list_next(child);
+  }
   //printf("5");
-  //printf("process_execute-end\n");
+  //printf("process_execute-emnd\n");
   //printf("6");
   palloc_free_page (program_name);
   return tid;
@@ -160,6 +170,7 @@ start_process (void *file_name_)
   //printf("process_load_sema %d, tid %d\n", thread_current()->load_sema, thread_current()->tid);
   if (!success) 
   {
+    thread_current()->not_successful_loading = 1;
     syscall_exit(-1);
   }
   //printf("process_load end, tid %d\n", thread_current()->tid); 
@@ -217,10 +228,11 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  /*for (int i = cur->fd_list - 1; i > 1; i--)
+  for (int i = 2; i < 128; i++)
   {
-    syscall_close (i);
-  }*/
+    if(cur->fd_list[i] != NULL)
+      syscall_close (i);
+  }
   palloc_free_page(cur->fd_list);
   if (pd != NULL) 
     {

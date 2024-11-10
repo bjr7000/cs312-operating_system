@@ -105,6 +105,7 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
 
     int exit_status;
+    int not_successful_loading;
     void* esp;
     struct list child_list;
     struct list_elem child_elem;
