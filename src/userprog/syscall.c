@@ -176,7 +176,7 @@ int syscall_open (const char *file)
   else
   {
     int fd;
-    for(fd = 3; thread_current()->fd_list[fd] != NULL; fd++) {}
+    for(fd = 2; thread_current()->fd_list[fd] != NULL; fd++) {}
     if (!strcmp(thread_current()->name, file)) file_deny_write(_file);
 
     thread_current()->fd_list[fd] = _file;
