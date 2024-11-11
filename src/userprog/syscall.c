@@ -60,7 +60,7 @@ syscall_handler (struct intr_frame *f)
 
   int argv[3], syscall_ID;
   syscall_ID = *(int *)f->esp;
-  check_syscall_ID_vaild (syscall_ID);
+  //check_syscall_ID_vaild (syscall_ID);
   
   thread_current()->esp = f->esp;
   switch (syscall_ID)
@@ -116,6 +116,8 @@ syscall_handler (struct intr_frame *f)
     case SYS_CLOSE:
       pop_arguments (f->esp, 1, argv);
       syscall_close (argv[0]);
+      break;
+    default:
       break;
   }
 }
