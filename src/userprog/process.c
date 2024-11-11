@@ -28,11 +28,9 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  //printf("process_execute, tid %d\n", thread_current()->tid);
   char *fn_copy, *program_name, *save_ptr = NULL;
 
   tid_t tid;
-  //printf("tid %d\n", thread_current()->tid);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -46,27 +44,14 @@ process_execute (const char *file_name)
   }
   strlcpy (program_name, file_name, PGSIZE);
 
-  //printf("tid %d\n", thread_current()->tid);
-
   /* Create a new thread to execute FILE_NAME. */
-  //printf("file_name, %s\n", file_name);
   program_name = strtok_r(program_name, " ", &save_ptr);
-  //printf("program_name, %s\n", program_name);
-  //printf("tid %d\n", thread_current()->tid);
-  //printf("process_name %s, tid %d\n", program_name, thread_current()->tid);
-  //printf("%d\n", filesys_open(program_name) == NULL);
 
   if (filesys_open(program_name) == NULL) return -1;
-  //printf("1");
   tid = thread_create (program_name, PRI_DEFAULT, start_process, fn_copy);
-  //printf("2");
-  //printf("process_execute, %d\n", tid);
-  //printf("%d\n", child_process_given_pid (tid)->load_sema);
-  //printf("3");
   
   sema_down(&child_process_given_pid (tid)->load_sema);
-  //printf("4");
-  //printf("process_execute_after sema, %d\n", tid);
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
 
@@ -78,66 +63,50 @@ process_execute (const char *file_name)
     }
     child = list_next(child);
   }
-  //printf("5");
-  //printf("process_execute-emnd\n");
-  //printf("6");
   palloc_free_page (program_name);
   return tid;
 }
 
-int
-args_parse(char *command_line, char **argv)
+int args_parse(char *command_line, char **argv)
 {
   int argc = 0;
   char *token, *save_ptr;
 
-  for (token = strtok_r (command_line, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr), argc++)
-  {
-    argv[argc] = token;
-  }
+  for (token = strtok_r (command_line, " ", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr), argc++) argv[argc] = token;
 
   return argc;
 }
 
-void
-args_push (int argc, char **argv, void **esp) 
+void args_push (int argc, char **argv, void **esp) 
 {
     int i, arg_len, line;
-
     char *arg_addresses[argc];
 
     for (i = argc - 1; i >= 0; i--) {
-        arg_len = strlen(argv[i]);
-        *esp -= (arg_len + 1);
-        //printf("Pushing argument '%s' to stack at %p\n", argv[i], *esp);
-        memcpy(*esp, argv[i], arg_len + 1);
+        arg_len = strlen(argv[i]) + 1;
+        *esp -= arg_len;
+        memcpy(*esp, argv[i], arg_len );
         arg_addresses[i] = *esp;
     }
 
     *esp = (void *)((uintptr_t)(*esp) - (uintptr_t)(*esp) % sizeof(char*));
-    //printf("Stack pointer after alignment: %p\n", *esp);
-
     *esp -= sizeof(char*);
+
     *(char **)*esp = 0;  
-    //printf("Stack pointer after alignment: %p\n", *esp);
 
     for (i = argc - 1; i >= 0; i--) {
         *esp -= sizeof(char*);;
         *(char **)*esp = arg_addresses[i];
     }
-    //printf("Stack pointer after alignment: %p\n", *esp);
 
     *esp -= sizeof(char**);
     *(char ***)*esp = *esp + sizeof(char**);
-    //printf("Stack pointer after alignment: %p\n", *esp);
 
     *esp -= sizeof(int);
     *(int *)*esp = argc;
-    //printf("Stack pointer after alignment: %p\n", *esp);
 
     *esp -= sizeof(void *);
     *(void **)*esp = 0;
-    //printf("Stack pointer after alignment: %p\n", *esp);
 }
 
 /* A thread function that loads a user process and starts it
@@ -145,7 +114,6 @@ args_push (int argc, char **argv, void **esp)
 static void
 start_process (void *file_name_)
 {
-  //printf("process_start, tid %d\n", thread_current()->tid);
   char *file_name = file_name_, **argv;
   struct intr_frame if_;
   bool success;
@@ -160,22 +128,16 @@ start_process (void *file_name_)
   int argc = args_parse(file_name, argv);
   success = load (argv[0], &if_.eip, &if_.esp);
   if (success) args_push(argc, argv, &if_.esp);
-  //hex_dump((int*)if_.esp, (int*)if_.esp, 0x8048000 - *(int*)if_.esp, true);
   /* If load failed, quit. */
-  //printf("process_load, tid %d\n", thread_current()->tid);
   palloc_free_page (argv);
   palloc_free_page (file_name);
 
   sema_up(&thread_current()->load_sema);
-  //printf("process_load_sema %d, tid %d\n", thread_current()->load_sema, thread_current()->tid);
   if (!success) 
   {
     thread_current()->not_successful_loading = 1;
     syscall_exit(-1);
   }
-  //printf("process_load end, tid %d\n", thread_current()->tid); 
-  //printf("process_start-end\n");
-  //hex_dump((int*)if_.esp, (int*)if_.esp, 0x8048000 - *(int*)if_.esp, true);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -198,23 +160,17 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-  //printf("process_wait\n");
   struct thread* cur = thread_current();
-  //hex_dump((int*)cur->esp, (int*)cur->esp, 0x8048000 - *(int*)cur->esp, true);
   struct thread *child = child_process_given_pid (child_tid);
-  //hex_dump((int*)cur->esp, (int*)cur->esp, 0x8048000 - *(int*)cur->esp, true);
   if (child == NULL) return -1;
 
   sema_down(&child->wait_sema);
-  //printf("sema_up\n");
+
   int exit_status = child->exit_status;
-  //printf("child %d\n", &child->child_elem);
-  //printf("%d\n", list_empty(&child->child_list));
   list_remove(&child->child_elem);
+
   sema_up(&child->exit_sema);
-  //printf("child\n");
-  //palloc_free_page(child);
-  //printf("process_wait-end\n");
+
   return exit_status;
 }
 
