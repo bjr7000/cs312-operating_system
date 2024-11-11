@@ -139,8 +139,7 @@ syscall_exit (int status)
 int
 syscall_exec (const char* command)
 {
-  int pid = process_execute (command);
-  return pid;
+  return process_execute(command);
 }
 
 int
