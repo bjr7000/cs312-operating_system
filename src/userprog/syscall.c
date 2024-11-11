@@ -206,12 +206,12 @@ int syscall_read (int fd, void *buffer, unsigned size)
     while(bytes_read < size && ((char *)buffer)[bytes_read] != '\0') bytes_read++;
     lock_release (&file_lock);
   }
-  else if (fd > 2) 
+  else if (fd >= 2) 
   {
-    lock_acquire (&file_lock);
     struct file *file = thread_current ()->fd_list[fd];
     if (file == NULL) syscall_exit (INVAILD);
 
+    lock_acquire(&file_lock);
     bytes_read = file_read (file, buffer, size);
     lock_release (&file_lock);
   }
@@ -229,7 +229,7 @@ int syscall_write (int fd, const void *buffer, unsigned size)
     putbuf(buffer, size);
     bytes_written = size;
     lock_release (&file_lock);
-  } else if (fd > 2)
+  } else if (fd >= 2)
   {
     struct file *file = thread_current ()->fd_list[fd];
     if (file == NULL) syscall_exit (INVAILD);
