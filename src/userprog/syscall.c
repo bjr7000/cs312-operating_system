@@ -4,6 +4,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "filesys/off_t.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "userprog/process.h"
 
 #define PHYS_BASE 0xc0000000
 #define STACK_BOTTOM 0x8048000
@@ -176,7 +179,7 @@ int syscall_open (const char *file)
   else
   {
     int fd;
-    for(fd = 2; thread_current()->fd_list[fd] != NULL; fd++) {}
+    for(fd = 3; thread_current()->fd_list[fd] != NULL; fd++) {}
     if (!strcmp(thread_current()->name, file)) file_deny_write(_file);
 
     thread_current()->fd_list[fd] = _file;
@@ -201,20 +204,21 @@ int syscall_read (int fd, void *buffer, unsigned size)
   int bytes_read = -1;
   if (fd == 0)
   {
-    lock_acquire (&file_lock);
-    bytes_read = 0;
-    while(bytes_read < size && ((char *)buffer)[bytes_read] != '\0') bytes_read++;
-    lock_release (&file_lock);
+      lock_acquire(&file_lock);
+      bytes_read = 0;
+      while (bytes_read < size && ((char*)buffer)[bytes_read] != '\0') bytes_read++;
+      lock_release(&file_lock);
   }
-  else if (fd >= 2) 
+  else if (fd > 2)
   {
-    struct file *file = thread_current ()->fd_list[fd];
-    if (file == NULL) syscall_exit (INVAILD);
+      struct file* file = thread_current()->fd_list[fd];
+      if (file == NULL) syscall_exit(INVAILD);
 
-    lock_acquire(&file_lock);
-    bytes_read = file_read (file, buffer, size);
-    lock_release (&file_lock);
+      lock_acquire(&file_lock);
+      bytes_read = file_read(file, buffer, size);
+      lock_release(&file_lock);
   }
+  else syscall_exit(INVAILD);
   return bytes_read;
 }
 
@@ -229,7 +233,7 @@ int syscall_write (int fd, const void *buffer, unsigned size)
     putbuf(buffer, size);
     bytes_written = size;
     lock_release (&file_lock);
-  } else if (fd >= 2)
+  } else if (fd > 2)
   {
     struct file *file = thread_current ()->fd_list[fd];
     if (file == NULL) syscall_exit (INVAILD);
@@ -239,6 +243,7 @@ int syscall_write (int fd, const void *buffer, unsigned size)
     bytes_written = file_write (file, buffer, size);
     lock_release (&file_lock);
   }
+  else syscall_exit(INVAILD);
 
   return bytes_written;
 }
