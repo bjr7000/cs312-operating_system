@@ -121,6 +121,7 @@ syscall_handler (struct intr_frame *f)
       syscall_close (argv[0]);
       break;
     default:
+      syscall_exit(INVAILD);
       break;
   }
 }
@@ -172,22 +173,16 @@ int syscall_open (const char *file)
   if (file == NULL) syscall_exit(INVAILD);
   lock_acquire (&file_lock);
   struct file* _file = filesys_open(file);
-  if(_file == NULL){
-    lock_release (&file_lock);
-    return -1;
-  }
-  else
+  int fd = -1;
+  if(_file != NULL)
   {
-    int fd;
     for(fd = 3; thread_current()->fd_list[fd] != NULL; fd++) {}
     if (!strcmp(thread_current()->name, file)) file_deny_write(_file);
 
     thread_current()->fd_list[fd] = _file;
-    lock_release (&file_lock);
-    return fd;
   }
   lock_release (&file_lock);
-  return -1;
+  return fd;
 }
 
 int syscall_filesize (int fd)
@@ -201,7 +196,7 @@ int syscall_read (int fd, void *buffer, unsigned size)
 {
   if (check_address_vaild(buffer) == INVAILD) syscall_exit(INVAILD);
 
-  int bytes_read = -1;
+  int bytes_read;
   if (fd == 0)
   {
       lock_acquire(&file_lock);
@@ -226,7 +221,7 @@ int syscall_write (int fd, const void *buffer, unsigned size)
 {
   if (check_address_vaild(buffer) == INVAILD) syscall_exit(INVAILD);
 
-  int bytes_written = -1;
+  int bytes_written;
   if (fd == 1)
   {
     lock_acquire (&file_lock);
