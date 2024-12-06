@@ -51,9 +51,9 @@ void *vm_free_frame (void *kernel_page)
     struct frame *f;
     lock_acquire (&frame_lock);
     
-    for (list_elem elem = list_begin(&frame_table); elem != list_end(&frame_table); elem = list_next(elem))
+    for (struct list_elem *elem = list_begin(&frame_table); elem != list_end(&frame_table); elem = list_next(elem))
     {
-        void *_f = list_entry(elem, struct frame, list_elem);
+        struct frame *_f = list_entry(elem, struct frame, list_elem);
         if (_f->kernel_page == kernel_page) 
         {
             f = _f;
