@@ -81,6 +81,14 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+struct mmf
+{
+   int mmf_id;
+   struct file *file;
+   struct list_elem mmf_elem;
+   void *user_page;
+}
+
 struct thread
   {
     /* Owned by thread.c. */
@@ -116,8 +124,10 @@ struct thread
     struct file **fd_list;
 #endif
 
-   //Supplemental Page Table by hash
+   //VM
    struct hash spt;
+   struct list mmf_list;
+   int mmf_id;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

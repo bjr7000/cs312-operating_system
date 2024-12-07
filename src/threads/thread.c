@@ -218,11 +218,15 @@ thread_create (const char *name, int priority,
   sema_init (&(t->load_sema), 0);
 
   t->parent = thread_current();
+  
+  list_push_back (&thread_current()->child_list, &t->child_elem);
 
   //initializing spt with hash init
   hash_init(&t->spt, spt_hash_bytes, spt_compare, NULL);
-  
-  list_push_back (&thread_current()->child_list, &t->child_elem);
+
+  t->mmf_id = 0;
+  list_init(&t->mf_list)
+
   /* Add to run queue. */
   thread_unblock (t);
   thread_change_running();
@@ -687,5 +691,44 @@ struct thread* child_process_given_pid (tid_t pid)
         return child;
     }
 
+  return NULL;
+}
+
+struct mmf *init_mmf(int mmf_id, struct file *file, void *user_page)
+{
+  //make mmf
+  struct mmf *mmf = (struct mmf *)malloc(sizeof *mmf);
+  mmf->mmf_id = mmf_id;
+  mmf->file = file;
+  mmf->user_page = user_page;
+
+  //make page with spt
+  int total_file_size = file_length(file);
+  
+  struct hash *spt = &thread_current()->spt;
+  for(off_t file_offset = 0; file_offset < total_file_size; file_offset += PGSIZE)
+  {
+    //if there is some other thing, cancel this func.
+    if(vm_get_spt(spt, user_page + file_offset)) return NULL;
+  }
+
+  for(off_t file_offset = 0; file_offset < total_file_size; file_offset += PGSIZE)
+  {
+    uint32_t read_bytes = file_offset + PGSIZE < total_file_size ? PGSIZE : total_file_size - file_offset;
+    set_spt_for_file(spt, user_page, file, file_offset, read_bytes, PGSIZE - read_bytes, true);
+    upage += PGSIZE;
+  }
+
+  list_push_back(&thread_current()->mmf_list, &mmf->mmf_elem);
+}
+
+struct mmf *vm_get_mmf(int mmf_id)
+{
+  struct list *mmf_list &thread_current()->mmf_list;
+  for (struct list_elem *elem = list_begin(mmf_list); elem != list_end(mmf_list); elem = list_next(elem))
+  {
+    struct mmf *mapped_file = list_entry(elem, struct mmf, mmf_elem);
+    if (mapped_file -> id == mmf_id) return mapped_file;
+  }
   return NULL;
 }
