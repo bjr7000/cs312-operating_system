@@ -158,7 +158,7 @@ page_fault (struct intr_frame *f)
   if(user) esp = f->esp;
   else esp = thread_current()->esp;
 
-  if((esp - fault_addr <= 32) && (PHYS_BASE - MAX_STACK_SIZE <= fault_addr) && get_spt(&thread_current()->spt, user_page) != NULL) set_spt_with_zero (&thread_current()->spt, user_page);
+  if((esp - fault_addr <= 32) && (PHYS_BASE - MAX_STACK_SIZE <= fault_addr) && vm_get_spt(&thread_current()->spt, user_page) != NULL) set_spt_with_zero (&thread_current()->spt, user_page);
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
