@@ -15,6 +15,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "vm/spt.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -217,6 +218,9 @@ thread_create (const char *name, int priority,
   sema_init (&(t->load_sema), 0);
 
   t->parent = thread_current();
+
+  //initializing spt with hash init
+  hash_init(&t->spt, spt_hash_bytes, spt_compare, NULL);
   
   list_push_back (&thread_current()->child_list, &t->child_elem);
   /* Add to run queue. */

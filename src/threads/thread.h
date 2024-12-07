@@ -116,6 +116,9 @@ struct thread
     struct file **fd_list;
 #endif
 
+   //Supplemental Page Table by hash
+   struct hash spt;
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
