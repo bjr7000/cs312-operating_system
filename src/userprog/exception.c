@@ -5,6 +5,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/spt.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -125,8 +126,8 @@ page_fault (struct intr_frame *f)
   bool not_present;  /* True: not-present page, false: writing r/o page. */
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
-  void *fault_addr;  /* Fault address. */
-
+  void *fault_addr;  /* Fault address. */  
+  
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -148,8 +149,16 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+  if (is_kernel_vaddr (fault_addr) || !not_present) syscall_exit (-1);
 
-  if (is_kernel_vaddr (fault_addr) || not_present || !user) syscall_exit (-1);
+  //VM stack growth
+  void *user_page = pg_round_down(fault_addr);
+
+  void *esp;
+  if(user) esp = f->esp;
+  else esp = thread_current()->esp;
+
+  if((esp - fault_addr <= 32) && (PHYS_BASE - MAX_STACK_SIZE <= fault_addr) && get_spt(&thread_current()->spt, user_page) != NULL) set_spt_with_zero (&thread_current()->spt, user_page);
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
