@@ -225,7 +225,7 @@ thread_create (const char *name, int priority,
   hash_init(&t->spt, spt_hash_bytes, spt_compare, NULL);
 
   t->mmf_id = 0;
-  list_init(&t->mf_list)
+  list_init(&t->mmf_list);
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -716,19 +716,21 @@ struct mmf *init_mmf(int mmf_id, struct file *file, void *user_page)
   {
     uint32_t read_bytes = file_offset + PGSIZE < total_file_size ? PGSIZE : total_file_size - file_offset;
     set_spt_for_file(spt, user_page, file, file_offset, read_bytes, PGSIZE - read_bytes, true);
-    upage += PGSIZE;
+    user_page += PGSIZE;
   }
 
   list_push_back(&thread_current()->mmf_list, &mmf->mmf_elem);
+
+  return mmf;
 }
 
 struct mmf *vm_get_mmf(int mmf_id)
 {
-  struct list *mmf_list &thread_current()->mmf_list;
+  struct list *mmf_list = &thread_current()->mmf_list;
   for (struct list_elem *elem = list_begin(mmf_list); elem != list_end(mmf_list); elem = list_next(elem))
   {
     struct mmf *mapped_file = list_entry(elem, struct mmf, mmf_elem);
-    if (mapped_file -> id == mmf_id) return mapped_file;
+    if (mapped_file -> mmf_id == mmf_id) return mapped_file;
   }
   return NULL;
 }

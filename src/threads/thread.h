@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "synch.h"
+#include <hash.h>
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -87,7 +89,7 @@ struct mmf
    struct file *file;
    struct list_elem mmf_elem;
    void *user_page;
-}
+};
 
 struct thread
   {
@@ -125,9 +127,9 @@ struct thread
 #endif
 
    //VM
-   struct hash spt;
-   struct list mmf_list;
-   int mmf_id;
+    struct hash spt;
+    struct list mmf_list;
+    int mmf_id;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

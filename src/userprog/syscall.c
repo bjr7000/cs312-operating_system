@@ -7,6 +7,8 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "userprog/process.h"
+#include "threads/vaddr.h"
+#include "vm/spt.h"
 
 #define PHYS_BASE 0xc0000000
 #define STACK_BOTTOM 0x8048000
@@ -119,6 +121,14 @@ syscall_handler (struct intr_frame *f)
     case SYS_CLOSE:
       pop_arguments (f->esp, 1, argv);
       syscall_close (argv[0]);
+      break;
+    case SYS_MMAP:
+      pop_arguments (f->esp, 2, argv);
+      f->eax = syscall_mmap((int) argv[0], (void *) argv[1]);
+      break;
+    case SYS_MUNMAP:
+      pop_arguments (f->esp, &argv[0], 1);
+      syscall_munmap((int) argv[0]);
       break;
     default:
       syscall_exit(INVAILD);
@@ -268,3 +278,63 @@ void syscall_close (int fd)
   file_close(file);
 }
 
+int syscall_mmap (int fd, void *address)
+{
+  struct file *file = thread_current()->fd_list[fd];
+  if (file == NULL || address == NULL || (int) address % PGSIZE != 0) syscall_exit(INVAILD);
+
+  lock_acquire(&file_lock);
+
+  struct file *file_reopened = file_reopen(file);
+  if(file_reopened == NULL) 
+  {
+    lock_release(&file_lock);
+    syscall_exit(INVAILD);
+  }
+  struct mmf *mmf = init_mmf(thread_current()->mmf_id++, file_reopened, address);
+  if (mmf == NULL)
+  {
+    lock_release(&file_lock);
+    syscall_exit(INVAILD);
+  }
+
+  lock_release(&file_lock);
+
+  return mmf->mmf_id;
+}
+
+void syscall_munmap (int mmf_id)
+{
+  struct mmf *mmf = vm_get_mmf(mmf_id);
+  if (mmf == NULL) return;
+
+  lock_acquire(&file_lock);
+
+  for (off_t offset = 0; offset < file_length (mmf->file); offset += PGSIZE)
+  {
+    struct spt *s = vm_get_spt (&thread_current()->spt, mmf->user_page);
+    //check file is dirtygit
+
+    //if file is dirty, write it. else just delete
+
+    if(pagedir_is_dirty (thread_current()->pagedir, mmf->user_page))
+    {
+      file_write_at (s->file, pagedir_get_page(thread_current()->pagedir, mmf->user_page), s->read_bytes, s->ofs);
+    }
+
+    vm_spt_page_delete (&thread_current()->spt, s);
+    mmf->user_page += PGSIZE;
+  }
+
+  for (struct list_elem *elem = list_begin(&thread_current()->mmf_list); elem != list_end(&thread_current()->mmf_list); elem = list_next(elem))
+  {
+    if(list_entry(elem, struct mmf, mmf_elem)->mmf_id == mmf_id) 
+    {
+      list_remove(elem);
+      break;
+    }
+  }
+
+  lock_release(&file_lock);
+
+}

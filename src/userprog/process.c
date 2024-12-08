@@ -531,8 +531,11 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
+      {
         set_spt_for_frame(&thread_current()->spt, PHYS_BASE - PGSIZE, kpage);
         *esp = PHYS_BASE;
+      }
+
       else
         vm_free_frame (kpage);
     }
