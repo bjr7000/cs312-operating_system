@@ -24,13 +24,11 @@ void free_frame(struct frame *f)
     free(f);
 }
 void vm_evict_frame()
-{
+{ 
     ASSERT(lock_held_by_current_thread(&frame_lock));
-
     struct frame *f = cur;
     struct spt *s;
     size_t iterations = 0;
-
     /* BEGIN: Find page to evict */
     while (iterations < list_size(&frame_table)) {
         // Clear the accessed bit for the current frame
@@ -38,7 +36,6 @@ void vm_evict_frame()
 
         // Check if the current frame can be evicted
         if (!pagedir_is_accessed(f->t->pagedir, f->user_page)) break; // Found a frame to evict
-
         // Move to the next frame
         f = list_next(&f->list_elem) == list_end(&frame_table) ? 
             list_entry(list_begin(&frame_table), struct frame, list_elem) :
@@ -46,10 +43,10 @@ void vm_evict_frame()
 
         iterations++;
     }
-
+    
     // If no frame is selected
     ASSERT(f != NULL);
-
+    
     // Update current checking frame 
     cur = list_next(&f->list_elem) == list_end(&frame_table) ?
         list_entry(list_begin(&frame_table), struct frame, list_elem) :
@@ -63,7 +60,6 @@ void vm_evict_frame()
     // Update the page's status to PAGE_SWAP and swap it out
     s->status = PAGE_SWAP;
     s->swap_index = swap_out(f->kernel_page);
-
     vm_free_frame(f->kernel_page);
 
 }
@@ -93,7 +89,7 @@ void *vm_get_frame(enum palloc_flags flags, void *user_page)
 }
 
 
-void *vm_free_frame (void *kernel_page)
+void vm_free_frame (void *kernel_page)
 {
     struct frame *f = NULL;
     lock_acquire (&frame_lock);

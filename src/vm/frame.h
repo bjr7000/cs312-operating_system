@@ -17,6 +17,6 @@ struct frame
 
 void frame_init();
 void *vm_get_frame(enum palloc_flags, void *);
-void *vm_free_frame (void *);
+void vm_free_frame (void *);
 
 #endif

@@ -37,5 +37,8 @@ struct spt *vm_get_spt(struct hash *, void *);
 void vm_spt_page_delete(struct hash *, struct spt *);
 unsigned spt_hash_bytes (const struct hash_elem *elem, void *aux);
 bool spt_compare (const struct hash_elem *s_1, const struct hash_elem *s_2, void *aux);
+bool load_page (struct hash *spt, void *user_page);
+void page_destroy(struct hash_elem *elem, void *aux);
+void destroy_spt(struct hash *spt);
 #endif
  

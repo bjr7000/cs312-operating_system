@@ -6,6 +6,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/spt.h"
+#include "vm/swap.h"
+#include <hash.h>
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -108,6 +110,28 @@ kill (struct intr_frame *f)
       thread_exit ();
     }
 }
+void print_spt(struct hash *spt) {
+    struct hash_iterator i;
+
+    printf("Supplemental Page Table Contents:\n");
+    hash_first(&i, spt);
+    while (hash_next(&i)) {
+        struct spt *e = hash_entry(hash_cur(&i), struct spt, hash_elem);
+
+        printf("Page: %p\n", e->user_page);
+        printf("  Status: %d\n", e->status);
+        printf("  Writable: %s\n", e->writable ? "true" : "false");
+
+        if (e->status == PAGE_FILE) {
+            printf("  File: %p, Offset: %u, Read Bytes: %u, Zero Bytes: %u\n",
+                   e->file, e->ofs, e->read_bytes, e->zero_bytes);
+        } else if (e->status == PAGE_SWAP) {
+            printf("  Swap ID: %u\n", e->swap_index);
+        } else if (e->status == PAGE_FRAME) {
+            printf("  Kernel Page: %p\n", e->kernel_page);
+        }
+    }
+}
 
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
@@ -149,17 +173,36 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  if (is_kernel_vaddr (fault_addr) || !not_present) syscall_exit (-1);
+  if (is_kernel_vaddr (fault_addr) || !not_present) 
+  {
+   syscall_exit (-1);
+  }
 
-  //VM stack growth
   void *user_page = pg_round_down(fault_addr);
+   
+   
+  //VM stack growth
+  
 
   void *esp;
+  struct hash *spt = &thread_current()->spt;
+  struct spt* e;
   if(user) esp = f->esp;
   else esp = thread_current()->esp;
 
-  if((esp - fault_addr <= 32) && (PHYS_BASE - MAX_STACK_SIZE <= fault_addr) && vm_get_spt(&thread_current()->spt, user_page) != NULL) set_spt_with_zero (&thread_current()->spt, user_page);
+  if((esp - fault_addr <= 32) && (PHYS_BASE - MAX_STACK_SIZE <= fault_addr) && !vm_get_spt(spt, user_page)) 
+  {
+   set_spt_with_zero (spt, user_page);
+  }
+   
+ //print_spt(spt);
 
+   
+  if (load_page (spt, user_page)) {
+   return;
+  }
+  syscall_exit(-1);
+  
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

@@ -66,7 +66,6 @@ syscall_handler (struct intr_frame *f)
   int argv[3], syscall_ID;
   syscall_ID = *(int *)f->esp;
   //check_syscall_ID_vaild (syscall_ID);
-  
   thread_current()->esp = f->esp;
   switch (syscall_ID)
   {
@@ -127,7 +126,7 @@ syscall_handler (struct intr_frame *f)
       f->eax = syscall_mmap((int) argv[0], (void *) argv[1]);
       break;
     case SYS_MUNMAP:
-      pop_arguments (f->esp, &argv[0], 1);
+      pop_arguments (f->esp, 1, argv);
       syscall_munmap((int) argv[0]);
       break;
     default:
@@ -179,7 +178,6 @@ int syscall_remove (const char *file)
 
 int syscall_open (const char *file)
 {
-
   if (file == NULL) syscall_exit(INVAILD);
   lock_acquire (&file_lock);
   struct file* _file = filesys_open(file);
@@ -249,7 +247,7 @@ int syscall_write (int fd, const void *buffer, unsigned size)
     lock_release (&file_lock);
   }
   else syscall_exit(INVAILD);
-
+  
   return bytes_written;
 }
 
@@ -281,7 +279,7 @@ void syscall_close (int fd)
 int syscall_mmap (int fd, void *address)
 {
   struct file *file = thread_current()->fd_list[fd];
-  if (file == NULL || address == NULL || (int) address % PGSIZE != 0) syscall_exit(INVAILD);
+  if (file == NULL || address == NULL || (int) address % PGSIZE != 0) return -1;
 
   lock_acquire(&file_lock);
 
@@ -289,13 +287,13 @@ int syscall_mmap (int fd, void *address)
   if(file_reopened == NULL) 
   {
     lock_release(&file_lock);
-    syscall_exit(INVAILD);
+    return -1;
   }
   struct mmf *mmf = init_mmf(thread_current()->mmf_id++, file_reopened, address);
   if (mmf == NULL)
   {
     lock_release(&file_lock);
-    syscall_exit(INVAILD);
+    return -1;
   }
 
   lock_release(&file_lock);
@@ -305,16 +303,24 @@ int syscall_mmap (int fd, void *address)
 
 void syscall_munmap (int mmf_id)
 {
-  struct mmf *mmf = vm_get_mmf(mmf_id);
-  if (mmf == NULL) return;
+  struct thread *t = thread_current ();
+  struct list_elem *elem;
+  struct mmf *mmf;
+  for (elem = list_begin (&t->mmf_list); elem != list_end (&t->mmf_list); elem = list_next (elem))
+  {
+    mmf = list_entry (elem, struct mmf, mmf_elem);
+    if (mmf->mmf_id == mmf_id)
+      break;
+  }
+  if (elem == list_end (&t->mmf_list))
+    return;
 
   lock_acquire(&file_lock);
 
   for (off_t offset = 0; offset < file_length (mmf->file); offset += PGSIZE)
   {
     struct spt *s = vm_get_spt (&thread_current()->spt, mmf->user_page);
-    //check file is dirtygit
-
+    //check file is dirty
     //if file is dirty, write it. else just delete
 
     if(pagedir_is_dirty (thread_current()->pagedir, mmf->user_page))
@@ -325,16 +331,6 @@ void syscall_munmap (int mmf_id)
     vm_spt_page_delete (&thread_current()->spt, s);
     mmf->user_page += PGSIZE;
   }
-
-  for (struct list_elem *elem = list_begin(&thread_current()->mmf_list); elem != list_end(&thread_current()->mmf_list); elem = list_next(elem))
-  {
-    if(list_entry(elem, struct mmf, mmf_elem)->mmf_id == mmf_id) 
-    {
-      list_remove(elem);
-      break;
-    }
-  }
-
+  list_remove(elem);
   lock_release(&file_lock);
-
 }

@@ -13,8 +13,11 @@ void init_swap_table()
 void swap_in(struct spt *s, void *vaddr)
 {
     lock_acquire(&swap_lock);
-    if (!is_valid_swap_index(s->swap_index) || bitmap_test(swap_table, s->swap_index) == true) syscall_exit(-1);
-
+    if (!is_valid_swap_index(s->swap_index) || bitmap_test(swap_table, s->swap_index) == true) 
+    {
+        //vm_free_frame(vaddr);
+        syscall_exit(-1);
+    }
     bitmap_set(swap_table, s->swap_index, true);
     lock_release(&swap_lock);
 
