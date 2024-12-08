@@ -1,8 +1,12 @@
 #include "vm/frame.h"
 #include "threads/synch.h"
+#include "vm/spt.h"
+#include "vm/swap.h"
 
 static struct list frame_table;
 static struct list frame_lock;
+static struct frame *cur;
+
 void alloc_frame(void *user_page, void *kernel_page)
 {
     struct frame *f;
@@ -21,6 +25,46 @@ void free_frame(struct frame *f)
 }
 void vm_evict_frame()
 {
+    ASSERT(lock_held_by_current_thread(&frame_lock));
+
+    struct frame *f = cur;
+    struct spt *s;
+    size_t iterations = 0;
+
+    /* BEGIN: Find page to evict */
+    while (iterations < list_size(&frame_table)) {
+        // Clear the accessed bit for the current frame
+        if (f != NULL) pagedir_set_accessed(f->t->pagedir, f->user_page, false);
+
+        // Check if the current frame can be evicted
+        if (!pagedir_is_accessed(f->t->pagedir, f->user_page)) break; // Found a frame to evict
+
+        // Move to the next frame
+        f = list_next(&f->list_elem) == list_end(&frame_table) ? 
+            list_entry(list_begin(&frame_table), struct frame, list_elem) :
+            list_entry(list_next(&f->list_elem), struct frame, list_elem);
+
+        iterations++;
+    }
+
+    // If no frame is selected
+    ASSERT(f != NULL);
+
+    // Update current checking frame 
+    cur = list_next(&f->list_elem) == list_end(&frame_table) ?
+        list_entry(list_begin(&frame_table), struct frame, list_elem) :
+        list_entry(list_next(&f->list_elem), struct frame, list_elem);
+    /* END: Find page to evict */
+
+    /* Evict the selected page */
+    s = vm_get_spt(&thread_current()->spt, f->user_page);
+    ASSERT(s != NULL);
+
+    // Update the page's status to PAGE_SWAP and swap it out
+    s->status = PAGE_SWAP;
+    s->swap_index = swap_out(f->kernel_page);
+
+    vm_free_frame(f->kernel_page);
 
 }
 
@@ -28,6 +72,7 @@ void frame_init()
 {
     list_init (&frame_table);
     lock_init (&frame_lock);
+    cur = NULL;
 }
 
 void *vm_get_frame(enum palloc_flags flags, void *user_page)
@@ -40,6 +85,8 @@ void *vm_get_frame(enum palloc_flags flags, void *user_page)
         vm_evict_frame();
         kernel_page = palloc_get_page(flags);
     }
+    if (kernel_page == NULL) return NULL;
+
     alloc_frame(user_page, kernel_page);
     lock_release(&frame_lock);
     return kernel_page;
@@ -48,7 +95,7 @@ void *vm_get_frame(enum palloc_flags flags, void *user_page)
 
 void *vm_free_frame (void *kernel_page)
 {
-    struct frame *f;
+    struct frame *f = NULL;
     lock_acquire (&frame_lock);
     
     for (struct list_elem *elem = list_begin(&frame_table); elem != list_end(&frame_table); elem = list_next(elem))
