@@ -7,6 +7,7 @@
 #include "threads/vaddr.h"
 #include "vm/spt.h"
 #include "vm/swap.h"
+
 #include <hash.h>
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -186,11 +187,9 @@ page_fault (struct intr_frame *f)
 
   void *esp;
   struct hash *spt = &thread_current()->spt;
-  struct spt* e;
   if(user) esp = f->esp;
   else esp = thread_current()->esp;
-
-  if((esp - fault_addr <= 32) && (PHYS_BASE - MAX_STACK_SIZE <= fault_addr) && !vm_get_spt(spt, user_page)) 
+  if((esp - 32 <= fault_addr) && (PHYS_BASE - (8 << 20) <= fault_addr) && fault_addr <= PHYS_BASE && !vm_get_spt(spt, user_page)) 
   {
    set_spt_with_zero (spt, user_page);
   }

@@ -5,15 +5,6 @@
 #include "threads/vaddr.h"
 #include "vm/swap.h"
 extern struct lock file_lock;
-void set_spt_idle(struct hash *spt, void *user_page, void *kernel_page)
-{
-    struct spt *s;
-    s = (struct spt *)malloc(sizeof *s);
-    s->user_page = user_page;
-    s->kernel_page = kernel_page;
-    s->status = PAGE_FRAME;
-    hash_insert(spt, &s->hash_elem);
-}
 
 void set_spt_with_zero(struct hash *spt, void *user_page) 
 {
@@ -74,7 +65,7 @@ bool load_page (struct hash *spt, void *user_page)
     //printf("load_page\n");
     struct spt *s = vm_get_spt(spt, user_page);
     if (s == NULL)
-    {
+    {   
         syscall_exit(-1); // Not found in the supplemental page table.
     }
     void *kernel_page = vm_get_frame(PAL_USER, user_page);
